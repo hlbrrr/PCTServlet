@@ -1,15 +1,17 @@
 package com.compassplus;
 
 import org.apache.commons.io.FileUtils;
+import org.w3c.dom.Document;
+import org.xml.sax.InputSource;
 
-import javax.servlet.ServletContext;
 import javax.servlet.ServletException;
 import javax.servlet.http.HttpServlet;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
+import javax.xml.parsers.DocumentBuilder;
+import javax.xml.parsers.DocumentBuilderFactory;
 import javax.xml.transform.TransformerException;
 import java.io.*;
-import java.nio.charset.Charset;
 
 /**
  * Created by IntelliJ IDEA.
@@ -22,6 +24,7 @@ public class PCTServlet extends HttpServlet {
     private static final String configPath = "/config.xml";
     private static final String jsonXslPath = "/transformToJSON.xsl";
     private static final String defaultEnc = "UTF8";
+    private static DocumentBuilderFactory dbFactory = null;
 
     public PCTServlet() {
         super();
@@ -68,11 +71,26 @@ public class PCTServlet extends HttpServlet {
             }
         }
         if (config != null) {
-            String result = null;
             try {
-                result = applyXSL(config.replace("\\", "\\\\"), FileUtils.readFileToString(new File(this.getServletContext().getRealPath(jsonXslPath)), defaultEnc)).replace("\\\\", "/").replace("\r", "").replace("\n", "\\n");
-                if (result != null) {
-                    httpServletResponse.getOutputStream().write(result.getBytes(defaultEnc));
+                String format = getParameter(httpServletRequest, "format");
+                if ("json".equals(format) || format == null) {
+                    String result = null;
+                    result = applyXSL(config.replace("\\", "\\\\"), FileUtils.readFileToString(new File(this.getServletContext().getRealPath(jsonXslPath)), defaultEnc)).replace("\\\\", "/").replace("\r", "").replace("\n", "\\n");
+                    if (result != null) {
+                        httpServletResponse.getOutputStream().write(result.getBytes(defaultEnc));
+                        return;
+                    }
+                } else if ("xml".equals(format)) {
+                    if (dbFactory == null) {
+                        dbFactory = DocumentBuilderFactory.newInstance();
+                    }
+                    DocumentBuilder db = dbFactory.newDocumentBuilder();
+                    db.setEntityResolver(null);
+                    db.parse(new InputSource(config));
+                    httpServletResponse.getOutputStream().write(config.getBytes(defaultEnc));
+                    return;
+                } else {
+                    httpServletResponse.setStatus(501);
                     return;
                 }
             } catch (Exception e) {
