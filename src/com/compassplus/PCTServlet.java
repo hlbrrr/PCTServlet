@@ -1,8 +1,6 @@
 package com.compassplus;
 
 import org.apache.commons.io.FileUtils;
-import org.w3c.dom.Document;
-import org.xml.sax.InputSource;
 
 import javax.servlet.ServletException;
 import javax.servlet.http.HttpServlet;
@@ -86,7 +84,8 @@ public class PCTServlet extends HttpServlet {
                     }
                     DocumentBuilder db = dbFactory.newDocumentBuilder();
                     db.setEntityResolver(null);
-                    db.parse(new InputSource(config));
+
+                    db.parse(new ByteArrayInputStream(config.getBytes(defaultEnc)));
                     httpServletResponse.getOutputStream().write(config.getBytes(defaultEnc));
                     return;
                 } else {
