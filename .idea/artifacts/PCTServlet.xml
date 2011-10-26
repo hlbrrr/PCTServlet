@@ -1,0 +1,8 @@
+<component name="ArtifactManager">
+  <artifact type="jar" name="PCTServlet">
+    <output-path>$PROJECT_DIR$/out/artifacts/PCTServlet</output-path>
+    <root id="archive" name="PCTServlet.jar">
+      <element id="module-output" name="PCTServlet" />
+    </root>
+  </artifact>
+</component>
