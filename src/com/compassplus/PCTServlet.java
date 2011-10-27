@@ -95,7 +95,7 @@ public class PCTServlet extends HttpServlet {
             } catch (Exception e) {
             }
         }
-        httpServletResponse.setStatus(204);
+        httpServletResponse.setStatus(501);
     }
 
     private void saveConfig(HttpServletRequest httpServletRequest, HttpServletResponse httpServletResponse) {
