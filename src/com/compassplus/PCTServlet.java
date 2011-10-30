@@ -10,6 +10,8 @@ import javax.xml.parsers.DocumentBuilder;
 import javax.xml.parsers.DocumentBuilderFactory;
 import javax.xml.transform.TransformerException;
 import java.io.*;
+import java.nio.channels.FileChannel;
+import java.util.Date;
 
 /**
  * Created by IntelliJ IDEA.
@@ -19,7 +21,8 @@ import java.io.*;
  * To change this template use File | Settings | File Templates.
  */
 public class PCTServlet extends HttpServlet {
-    private static final String configPath = "/config.xml";
+    private static final String configPath = "/WEB-INF/config/config.xml";
+    private static final String changelog = "/WEB-INF/changelog.txt";
     private static final String jsonXslPath = "/transformToJSON.xsl";
     private static final String defaultEnc = "UTF8";
     private static DocumentBuilderFactory dbFactory = null;
@@ -66,6 +69,7 @@ public class PCTServlet extends HttpServlet {
             try {
                 config = FileUtils.readFileToString(new File(this.getServletContext().getRealPath(configPath)), defaultEnc);
             } catch (Exception e) {
+                e.printStackTrace();
             }
         }
         if (config != null) {
@@ -79,26 +83,42 @@ public class PCTServlet extends HttpServlet {
                         return;
                     }
                 } else if ("xml".equals(format)) {
-                    if (dbFactory == null) {
-                        dbFactory = DocumentBuilderFactory.newInstance();
-                    }
-                    DocumentBuilder db = dbFactory.newDocumentBuilder();
+                    DocumentBuilder db = getDbFactory().newDocumentBuilder();
                     db.setEntityResolver(null);
 
                     db.parse(new ByteArrayInputStream(config.getBytes(defaultEnc)));
                     httpServletResponse.getOutputStream().write(config.getBytes(defaultEnc));
                     return;
-                } else {
-                    httpServletResponse.setStatus(501);
-                    return;
                 }
             } catch (Exception e) {
+                e.printStackTrace();
             }
         }
         httpServletResponse.setStatus(501);
     }
 
     private void saveConfig(HttpServletRequest httpServletRequest, HttpServletResponse httpServletResponse) {
+
+        try {
+            String config = getParameter(httpServletRequest, "config");
+            DocumentBuilder db = getDbFactory().newDocumentBuilder();
+            db.setEntityResolver(null);
+            db.parse(new ByteArrayInputStream(config.getBytes(defaultEnc)));
+            synchronized (configPath) {
+                try {
+                    String fullPath = this.getServletContext().getRealPath(configPath);
+                    copyFile(new File(fullPath), new File(fullPath + "_bck_" + System.currentTimeMillis()));
+                    FileUtils.writeByteArrayToFile(new File(fullPath), config.getBytes(defaultEnc));
+
+                    return;
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        httpServletResponse.setStatus(501);
     }
 
 
@@ -120,5 +140,33 @@ public class PCTServlet extends HttpServlet {
         String returnData = writer.toString(defaultEnc);
 
         return returnData;
+    }
+
+    private static void copyFile(File sourceFile, File destFile) throws IOException {
+        if (!destFile.exists()) {
+            destFile.createNewFile();
+        }
+
+        FileChannel source = null;
+        FileChannel destination = null;
+        try {
+            source = new FileInputStream(sourceFile).getChannel();
+            destination = new FileOutputStream(destFile).getChannel();
+            destination.transferFrom(source, 0, source.size());
+        } finally {
+            if (source != null) {
+                source.close();
+            }
+            if (destination != null) {
+                destination.close();
+            }
+        }
+    }
+
+    private static DocumentBuilderFactory getDbFactory() {
+        if (dbFactory == null) {
+            dbFactory = DocumentBuilderFactory.newInstance();
+        }
+        return dbFactory;
     }
 }
