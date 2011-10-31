@@ -42,6 +42,8 @@ public class PCTServlet extends HttpServlet {
         }
         if ("getConfig".equals(action)) {
             getConfig(httpServletRequest, httpServletResponse);
+        } else if ("downloadConfig".equals(action)) {
+            downloadConfig(httpServletRequest, httpServletResponse);
         } else if ("saveConfig".equals(action)) {
             saveConfig(httpServletRequest, httpServletResponse);
         } else {
@@ -90,6 +92,34 @@ public class PCTServlet extends HttpServlet {
                     httpServletResponse.getOutputStream().write(config.getBytes(defaultEnc));
                     return;
                 }
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }
+        httpServletResponse.setStatus(501);
+    }
+
+    private void downloadConfig(HttpServletRequest httpServletRequest, HttpServletResponse httpServletResponse) {
+        String config = null;
+        synchronized (configPath) {
+            try {
+                config = FileUtils.readFileToString(new File(this.getServletContext().getRealPath(configPath)), defaultEnc);
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }
+        if (config != null) {
+            try {
+                DocumentBuilder db = getDbFactory().newDocumentBuilder();
+                db.setEntityResolver(null);
+
+                db.parse(new ByteArrayInputStream(config.getBytes(defaultEnc)));
+                httpServletResponse.setCharacterEncoding(defaultEnc);
+                httpServletResponse.setContentType("text/plain");
+                httpServletResponse.setHeader("Content-Disposition",
+                        "attachment; filename=\"config.xml\"");
+                httpServletResponse.getOutputStream().write(config.getBytes(defaultEnc));
+                return;
             } catch (Exception e) {
                 e.printStackTrace();
             }
