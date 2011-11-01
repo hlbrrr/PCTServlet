@@ -131,21 +131,30 @@ public class PCTServlet extends HttpServlet {
 
         try {
             String config = getParameter(httpServletRequest, "config");
+            System.out.println("Getting factory..");
             DocumentBuilder db = getDbFactory().newDocumentBuilder();
+            System.out.println("Got factory!");
             db.setEntityResolver(null);
+            System.out.println("Validating config..");
             db.parse(new ByteArrayInputStream(config.getBytes(defaultEnc)));
+            System.out.println("Config is valid!");
             synchronized (configPath) {
                 try {
                     String fullPath = this.getServletContext().getRealPath(configPath);
+                    System.out.println("Copying old config..");
                     copyFile(new File(fullPath), new File(fullPath + "_bck_" + System.currentTimeMillis()));
+                    System.out.println("Old config copied!");
+                    System.out.println("Saving new config..");
                     FileUtils.writeByteArrayToFile(new File(fullPath), config.getBytes(defaultEnc));
-
+                    System.out.println("Config saved!");
                     return;
                 } catch (Exception e) {
+                    System.out.println("Can't save config!");
                     e.printStackTrace();
                 }
             }
         } catch (Exception e) {
+            System.out.println("Can't validate config!");
             e.printStackTrace();
         }
         httpServletResponse.setStatus(501);
