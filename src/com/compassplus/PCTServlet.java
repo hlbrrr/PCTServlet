@@ -69,8 +69,11 @@ public class PCTServlet extends HttpServlet {
         String config = null;
         synchronized (configPath) {
             try {
+                System.out.println("Reading config file..");
                 config = FileUtils.readFileToString(new File(this.getServletContext().getRealPath(configPath)), defaultEnc);
             } catch (Exception e) {
+                System.out.println("Can't read file!");
+                httpServletResponse.setStatus(551);
                 e.printStackTrace();
             }
         }
@@ -82,21 +85,22 @@ public class PCTServlet extends HttpServlet {
                     result = applyXSL(config.replace("\\", "\\\\"), FileUtils.readFileToString(new File(this.getServletContext().getRealPath(jsonXslPath)), defaultEnc)).replace("\\\\", "/").replace("\r", "").replace("\n", "\\n");
                     if (result != null) {
                         httpServletResponse.getOutputStream().write(result.getBytes(defaultEnc));
-                        return;
                     }
                 } else if ("xml".equals(format)) {
                     DocumentBuilder db = getDbFactory().newDocumentBuilder();
                     db.setEntityResolver(null);
-
                     db.parse(new ByteArrayInputStream(config.getBytes(defaultEnc)));
                     httpServletResponse.getOutputStream().write(config.getBytes(defaultEnc));
-                    return;
+                } else {
+                    System.out.println("Unknown format [" + format + "]!");
+                    httpServletResponse.setStatus(553);
                 }
             } catch (Exception e) {
+                System.out.println("Can't validate config!");
+                httpServletResponse.setStatus(552);
                 e.printStackTrace();
             }
         }
-        httpServletResponse.setStatus(501);
     }
 
     private void downloadConfig(HttpServletRequest httpServletRequest, HttpServletResponse httpServletResponse) {
@@ -128,36 +132,34 @@ public class PCTServlet extends HttpServlet {
     }
 
     private void saveConfig(HttpServletRequest httpServletRequest, HttpServletResponse httpServletResponse) {
-
         try {
             String config = getParameter(httpServletRequest, "config");
+            System.out.println("Config : ");
+            System.out.println(config);
             System.out.println("Getting factory..");
             DocumentBuilder db = getDbFactory().newDocumentBuilder();
-            System.out.println("Got factory!");
             db.setEntityResolver(null);
             System.out.println("Validating config..");
             db.parse(new ByteArrayInputStream(config.getBytes(defaultEnc)));
-            System.out.println("Config is valid!");
             synchronized (configPath) {
                 try {
                     String fullPath = this.getServletContext().getRealPath(configPath);
                     System.out.println("Copying old config..");
                     copyFile(new File(fullPath), new File(fullPath + "_bck_" + System.currentTimeMillis()));
-                    System.out.println("Old config copied!");
                     System.out.println("Saving new config..");
                     FileUtils.writeByteArrayToFile(new File(fullPath), config.getBytes(defaultEnc));
-                    System.out.println("Config saved!");
                     return;
                 } catch (Exception e) {
+                    httpServletResponse.setStatus(551);
                     System.out.println("Can't save config!");
                     e.printStackTrace();
                 }
             }
         } catch (Exception e) {
+            httpServletResponse.setStatus(552);
             System.out.println("Can't validate config!");
             e.printStackTrace();
         }
-        httpServletResponse.setStatus(501);
     }
 
 
