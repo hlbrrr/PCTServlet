@@ -1,6 +1,7 @@
 package com.compassplus;
 
 import org.apache.commons.io.FileUtils;
+import org.apache.commons.io.IOUtils;
 import org.omg.CORBA.UNKNOWN;
 import org.w3c.dom.Node;
 
@@ -27,6 +28,7 @@ public class PCTServlet extends HttpServlet {
     private static final String changelog = "/WEB-INF/changelog.txt";
     private static final String jsonXslPath = "/WEB-INF/transformToJSON.xsl";
     private static final String prepareCfgXslPath = "/WEB-INF/prepareCfg.xsl";
+    private static final String uploadsPath = "/uploads";
     private static final String defaultEnc = "UTF8";
     private static DocumentBuilderFactory dbFactory = null;
     private static XMLUtils xut = XMLUtils.getInstance();
@@ -80,12 +82,57 @@ public class PCTServlet extends HttpServlet {
                 downloadConfig(CN, httpServletRequest, httpServletResponse);
             } else if ("saveConfig".equals(action) && uType == ADMIN_USER) {
                 saveConfig(httpServletRequest, httpServletResponse);
+            } else if ("uploadFile".equals(action) && uType == ADMIN_USER) {
+                uploadFile(httpServletRequest, httpServletResponse);
             } else {
-                httpServletResponse.setStatus(501);
+                httpServletResponse.setStatus(HttpServletResponse.SC_NOT_IMPLEMENTED);
             }
         } else {
-            httpServletResponse.setStatus(401);
+            httpServletResponse.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
         }
+    }
+
+    private void uploadFile(HttpServletRequest request, HttpServletResponse response) {
+        PrintWriter writer = null;
+        InputStream is = null;
+        FileOutputStream fos = null;
+
+        try {
+            writer = response.getWriter();
+        } catch (IOException ex) {
+            //log(OctetStreamReader.class.getName() + "has thrown an exception: " + ex.getMessage());
+        }
+
+        String filename = request.getHeader("X-File-Name");
+        response.setContentType("text/html");
+        try {
+            is = request.getInputStream();
+            fos = new FileOutputStream(new File(this.getServletContext().getRealPath(uploadsPath) + "/" + filename));
+            IOUtils.copy(is, fos);
+            response.setStatus(HttpServletResponse.SC_OK);
+            writer.print("{\"success\":true}");
+        } catch (FileNotFoundException ex) {
+            response.setStatus(response.SC_INTERNAL_SERVER_ERROR);
+            writer.print("{\"success\":false}");
+            //log(OctetStreamReader.class.getName() + "has thrown an exception: " + ex.getMessage());
+        } catch (IOException ex) {
+            response.setStatus(response.SC_INTERNAL_SERVER_ERROR);
+            writer.print("{\"success\":false}");
+            //log(OctetStreamReader.class.getName() + "has thrown an exception: " + ex.getMessage());
+        } finally {
+            try {
+                if (fos != null) {
+                    fos.close();
+                }
+                if (is != null) {
+                    is.close();
+                }
+            } catch (IOException ignored) {
+            }
+        }
+
+        writer.flush();
+        writer.close();
     }
 
     private void getPage(String path, HttpServletResponse httpServletResponse) {
@@ -95,7 +142,7 @@ public class PCTServlet extends HttpServlet {
             httpServletResponse.getOutputStream().write(page.getBytes(defaultEnc));
         } catch (Exception e) {
             System.out.println("Can't read page file!");
-            httpServletResponse.setStatus(503);
+            httpServletResponse.setStatus(HttpServletResponse.SC_SERVICE_UNAVAILABLE);
             e.printStackTrace();
         }
     }
@@ -205,7 +252,7 @@ public class PCTServlet extends HttpServlet {
                 e.printStackTrace();
             }
         }
-        httpServletResponse.setStatus(503);
+        httpServletResponse.setStatus(HttpServletResponse.SC_SERVICE_UNAVAILABLE);
     }
 
     private void saveConfig(HttpServletRequest httpServletRequest, HttpServletResponse httpServletResponse) {
