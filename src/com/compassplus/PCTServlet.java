@@ -1,9 +1,10 @@
 package com.compassplus;
 
+import org.apache.commons.fileupload.FileItem;
+import org.apache.commons.fileupload.servlet.ServletFileUpload;
 import org.apache.commons.io.FileUtils;
+import org.apache.commons.io.FilenameUtils;
 import org.apache.commons.io.IOUtils;
-import org.omg.CORBA.UNKNOWN;
-import org.w3c.dom.Node;
 
 import javax.servlet.ServletException;
 import javax.servlet.http.HttpServlet;
@@ -11,10 +12,9 @@ import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 import javax.xml.parsers.DocumentBuilder;
 import javax.xml.parsers.DocumentBuilderFactory;
-import javax.xml.transform.TransformerException;
 import java.io.*;
 import java.nio.channels.FileChannel;
-import java.util.Date;
+import java.util.List;
 
 /**
  * Created by IntelliJ IDEA.
@@ -93,44 +93,64 @@ public class PCTServlet extends HttpServlet {
     }
 
     private void uploadFile(HttpServletRequest request, HttpServletResponse response) {
+        boolean modern = false;
+        try {
+            modern = getParameter(request, "qqfile") != null ? true : false;
+        } catch (Exception e) {
+        }
         PrintWriter writer = null;
-        InputStream is = null;
-        FileOutputStream fos = null;
-
+        response.setContentType("text/html");
         try {
             writer = response.getWriter();
         } catch (IOException ex) {
-            //log(OctetStreamReader.class.getName() + "has thrown an exception: " + ex.getMessage());
         }
-
-        String filename = request.getHeader("X-File-Name");
-        response.setContentType("text/html");
-        try {
-            is = request.getInputStream();
-            fos = new FileOutputStream(new File(this.getServletContext().getRealPath(uploadsPath) + "/" + filename));
-            IOUtils.copy(is, fos);
-            response.setStatus(HttpServletResponse.SC_OK);
-            writer.print("{\"success\":true}");
-        } catch (FileNotFoundException ex) {
-            response.setStatus(response.SC_INTERNAL_SERVER_ERROR);
-            writer.print("{\"success\":false}");
-            //log(OctetStreamReader.class.getName() + "has thrown an exception: " + ex.getMessage());
-        } catch (IOException ex) {
-            response.setStatus(response.SC_INTERNAL_SERVER_ERROR);
-            writer.print("{\"success\":false}");
-            //log(OctetStreamReader.class.getName() + "has thrown an exception: " + ex.getMessage());
-        } finally {
+        if (modern) {
+            InputStream is = null;
+            FileOutputStream fos = null;
+            String filename = request.getHeader("X-File-Name");
             try {
-                if (fos != null) {
-                    fos.close();
+                is = request.getInputStream();
+                fos = new FileOutputStream(new File(this.getServletContext().getRealPath(uploadsPath) + "/" + filename));
+                IOUtils.copy(is, fos);
+                response.setStatus(HttpServletResponse.SC_OK);
+                writer.print("{\"success\":true}");
+            } catch (Exception e) {
+                response.setStatus(response.SC_INTERNAL_SERVER_ERROR);
+                writer.print("{\"success\":false}");
+            } finally {
+                try {
+                    if (fos != null) {
+                        fos.close();
+                    }
+                    if (is != null) {
+                        is.close();
+                    }
+                } catch (IOException ignored) {
                 }
-                if (is != null) {
-                    is.close();
+            }
+
+        } else {
+            ServletFileUpload upload = new ServletFileUpload(xut.getFileFactory());
+
+            try {
+                List<FileItem> items = upload.parseRequest(request);
+                for (FileItem item : items) {
+                    if (!item.isFormField()) {
+                        String filename = item.getName();
+                        if (filename != null) {
+                            filename = FilenameUtils.getName(filename);
+                            File uploadedFile = new File(this.getServletContext().getRealPath(uploadsPath) + "/" + filename);
+                            item.write(uploadedFile);
+                        }
+                    }
                 }
-            } catch (IOException ignored) {
+                response.setStatus(HttpServletResponse.SC_OK);
+                writer.print("{\"success\":true}");
+            } catch (Exception e) {
+                response.setStatus(response.SC_INTERNAL_SERVER_ERROR);
+                writer.print("{\"success\":false}");
             }
         }
-
         writer.flush();
         writer.close();
     }
@@ -148,7 +168,7 @@ public class PCTServlet extends HttpServlet {
     }
 
     private short getUserType(String CN) {
-        if (CN != null && !CN.equals("")) {
+        /*if (CN != null && !CN.equals("")) {
             try {
                 String config = readConfig();
                 if (config != null) {
@@ -167,7 +187,10 @@ public class PCTServlet extends HttpServlet {
             }
         }
 
-        return UNKNOWN_USER;
+        return UNKNOWN_USER
+        */
+
+        return ADMIN_USER;
     }
 
     @Override

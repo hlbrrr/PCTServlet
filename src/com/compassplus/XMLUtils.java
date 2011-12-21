@@ -1,5 +1,7 @@
 package com.compassplus;
 
+import org.apache.commons.fileupload.FileItemFactory;
+import org.apache.commons.fileupload.disk.DiskFileItemFactory;
 import org.w3c.dom.Document;
 import org.w3c.dom.Node;
 import org.xml.sax.InputSource;
@@ -27,15 +29,13 @@ public class XMLUtils {
     private XPath xPath = XPathFactory.newInstance().newXPath();
     private static javax.xml.transform.TransformerFactory tFactory = null;
     private static final String defaultEnc = "UTF8";
+    private static FileItemFactory factory;
 
     public static XMLUtils getInstance() {
         return ourInstance;
     }
 
-    public static String applyXSL
-            (String
-                     XMLText, String
-                    XSLText) throws TransformerException, UnsupportedEncodingException {
+    public String applyXSL(String XMLText, String XSLText) throws TransformerException, UnsupportedEncodingException {
 
         String declarationRegex = "<\\?.*?\\?>";
         XMLText = XMLText.replaceAll(declarationRegex, "");
@@ -51,6 +51,17 @@ public class XMLUtils {
         String returnData = writer.toString(defaultEnc);
 
         return returnData;
+    }
+
+    public FileItemFactory getFileFactory() {
+        if (factory == null) {
+            synchronized (this) {
+                if (factory == null) {
+                    factory = new DiskFileItemFactory();
+                }
+            }
+        }
+        return factory;
     }
 
     public Node getNode(String xPath, Object src) {
