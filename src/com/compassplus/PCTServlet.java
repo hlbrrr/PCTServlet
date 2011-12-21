@@ -5,6 +5,7 @@ import org.apache.commons.fileupload.servlet.ServletFileUpload;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.io.FilenameUtils;
 import org.apache.commons.io.IOUtils;
+import org.w3c.dom.Node;
 
 import javax.servlet.ServletException;
 import javax.servlet.http.HttpServlet;
@@ -27,6 +28,7 @@ public class PCTServlet extends HttpServlet {
     private static final String configPath = "/WEB-INF/config/config.xml";
     private static final String changelog = "/WEB-INF/changelog.txt";
     private static final String jsonXslPath = "/WEB-INF/transformToJSON.xsl";
+    private static final String homeXslPath = "/WEB-INF/home.xsl";
     private static final String prepareCfgXslPath = "/WEB-INF/prepareCfg.xsl";
     private static final String uploadsPath = "/uploads";
     private static final String defaultEnc = "UTF8";
@@ -64,6 +66,13 @@ public class PCTServlet extends HttpServlet {
         }
 
         short uType = getUserType(CN);
+
+        if (httpServletRequest.getParameter("z") != null) {
+            uType = REGULAR_USER;
+        } else {
+            uType = ADMIN_USER;
+        }
+
         if (uType != UNKNOWN_USER) {
             String action = null;
 
@@ -75,9 +84,12 @@ public class PCTServlet extends HttpServlet {
             if (action == null && uType == ADMIN_USER) {
                 getPage(ADMIN_PAGE, httpServletResponse);
             } else if (action == null && uType == REGULAR_USER) {
-                getPage(REGULAR_PAGE, httpServletResponse);
+                //getPage(REGULAR_PAGE, httpServletResponse);
+                getUserHome(httpServletResponse);
             } else if ("getConfig".equals(action) && uType == ADMIN_USER) {
                 getConfig(httpServletRequest, httpServletResponse);
+            } else if ("getHome".equals(action) && uType == ADMIN_USER) {
+                getAdminHome(false, httpServletResponse);
             } else if ("downloadConfig".equals(action)) {
                 downloadConfig(CN, httpServletRequest, httpServletResponse);
             } else if ("saveConfig".equals(action) && uType == ADMIN_USER) {
@@ -90,6 +102,35 @@ public class PCTServlet extends HttpServlet {
         } else {
             httpServletResponse.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
         }
+    }
+
+    private void getAdminHome(boolean wrap, HttpServletResponse response) {
+        String config = readConfig();
+        response.setContentType("text/html");
+        response.setCharacterEncoding("utf-8"); // for IE only
+        if (config != null) {
+            try {
+                config = config.replace("<root>", "<root><path>" + uploadsPath + "</path>");
+                if (wrap) {
+                    config = config.replace("<root>", "<root><wrap>true</wrap>");
+                }
+                String result = null;
+                result = xut.applyXSL(config, FileUtils.readFileToString(new File(this.getServletContext().getRealPath(homeXslPath)), defaultEnc));
+                if (result != null) {
+                    response.getOutputStream().write(result.getBytes(defaultEnc));
+                }
+            } catch (Exception e) {
+                System.out.println("Can't validate config!");
+                response.setStatus(552);
+                e.printStackTrace();
+            }
+        } else {
+            response.setStatus(551);
+        }
+    }
+
+    private void getUserHome(HttpServletResponse response) {
+        getAdminHome(true, response);
     }
 
     private void uploadFile(HttpServletRequest request, HttpServletResponse response) {
@@ -168,7 +209,7 @@ public class PCTServlet extends HttpServlet {
     }
 
     private short getUserType(String CN) {
-        /*if (CN != null && !CN.equals("")) {
+        if (CN != null && !CN.equals("")) {
             try {
                 String config = readConfig();
                 if (config != null) {
@@ -187,10 +228,7 @@ public class PCTServlet extends HttpServlet {
             }
         }
 
-        return UNKNOWN_USER
-        */
-
-        return ADMIN_USER;
+        return UNKNOWN_USER;
     }
 
     @Override
