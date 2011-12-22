@@ -5,6 +5,7 @@ import org.apache.commons.fileupload.servlet.ServletFileUpload;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.io.FilenameUtils;
 import org.apache.commons.io.IOUtils;
+import org.w3c.dom.Document;
 import org.w3c.dom.Node;
 
 import javax.servlet.ServletException;
@@ -67,11 +68,11 @@ public class PCTServlet extends HttpServlet {
 
         short uType = getUserType(CN);
 
-        if (httpServletRequest.getParameter("z") != null) {
+        /*if (httpServletRequest.getParameter("z") != null) {
             uType = REGULAR_USER;
         } else {
             uType = ADMIN_USER;
-        }
+        }*/
 
         if (uType != UNKNOWN_USER) {
             String action = null;
@@ -304,7 +305,7 @@ public class PCTServlet extends HttpServlet {
                 pwd = null;
 
                 httpServletResponse.setCharacterEncoding(defaultEnc);
-                httpServletResponse.setContentType("text/plain");
+                httpServletResponse.setContentType("application/pct");
                 httpServletResponse.setHeader("Content-Disposition",
                         "attachment; filename=\"config.exml\"");
                 httpServletResponse.getOutputStream().write(config.getBytes(defaultEnc));
@@ -333,6 +334,7 @@ public class PCTServlet extends HttpServlet {
                     copyFile(new File(fullPath), new File(fullPath + "_bck_" + System.currentTimeMillis()));
                     System.out.println("Saving new config..");
                     FileUtils.writeByteArrayToFile(new File(fullPath), config.getBytes(defaultEnc));
+                    removeUnusedFiles(config);
                     return;
                 } catch (Exception e) {
                     httpServletResponse.setStatus(551);
@@ -347,6 +349,32 @@ public class PCTServlet extends HttpServlet {
         }
     }
 
+
+    private void removeUnusedFiles(String config) {
+        try {
+            Document doc = xut.getDocumentFromString(config);
+
+            String path = this.getServletContext().getRealPath(uploadsPath);
+            File folder = new File(path);
+            File[] listOfFiles = folder.listFiles();
+            String fileName;
+            for (int i = 0; i < listOfFiles.length; i++) {
+                if (listOfFiles[i].isFile()) {
+                    fileName = listOfFiles[i].getName();
+                    try {
+                        if (xut.getNode("/root/Files/File[Key='" + fileName + "']", doc) == null) {
+                            listOfFiles[i].delete();
+                        }
+                    } catch (Exception e) {
+
+                    }
+                }
+            }
+
+        } catch (Exception e) {
+
+        }
+    }
 
     private static void copyFile(File sourceFile, File destFile) throws IOException {
         if (!destFile.exists()) {
