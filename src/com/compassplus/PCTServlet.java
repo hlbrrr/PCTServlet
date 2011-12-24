@@ -95,7 +95,7 @@ public class PCTServlet extends HttpServlet {
 
     @Override
     protected void doGet(HttpServletRequest httpServletRequest, HttpServletResponse httpServletResponse) throws ServletException, IOException {
-        httpServletResponse.setCharacterEncoding(defaultEnc);
+        httpServletResponse.setContentType("text/html; charset=utf-8");
         String CN = null;
         try {
             java.security.cert.X509Certificate[] certs;
@@ -223,7 +223,7 @@ public class PCTServlet extends HttpServlet {
                                 sb.append("<Name>");
                                 sb.append(listOfFiles[i].getName());
                                 sb.append("</Name><Description>");
-                                Node descriptionNode = xut.getNode("/root/Comment", xut.getDocumentFromString(FileUtils.readFileToString(listOfFiles[i].getAbsoluteFile())));
+                                Node descriptionNode = xut.getNode("/root/Comment", xut.getDocumentFromString(FileUtils.readFileToString(listOfFiles[i].getAbsoluteFile(), defaultEnc)));
                                 if (descriptionNode != null && xut.getString(descriptionNode) != null) {
                                     sb.append(xut.getString(descriptionNode));
                                 }
@@ -272,9 +272,16 @@ public class PCTServlet extends HttpServlet {
             logList.append("</root>");
             String html = xut.applyXSL(logList.toString(), FileUtils.readFileToString(new File(this.getServletContext().getRealPath(imageFilesXslPath)), defaultEnc));
             if (html != null) {
-                response.setContentType("text/html");
-                response.setCharacterEncoding("utf-8"); // for IE only
-                response.getOutputStream().write(html.getBytes(defaultEnc));
+                //response.setContentType("text/html");
+                //response.setCharacterEncoding("utf-8"); // for IE only
+                PrintWriter writer = null;
+                try {
+                    writer = response.getWriter();
+                } catch (IOException ex) {
+                }
+                writer.write(html);
+                writer.flush();
+                writer.close();
             }
         } catch (Exception e) {
             e.printStackTrace();
@@ -329,8 +336,8 @@ public class PCTServlet extends HttpServlet {
 
     private void getAdminHome(boolean wrap, HttpServletResponse response) {
         String config = readConfig();
-        response.setContentType("text/html");
-        response.setCharacterEncoding("utf-8"); // for IE only
+        //response.setContentType("text/html");
+        //response.setCharacterEncoding("utf-8"); // for IE only
         if (config != null) {
             try {
                 config = config.replace("<root>", "<root><path>" + uploadsPath + "</path>");
@@ -339,7 +346,14 @@ public class PCTServlet extends HttpServlet {
                 }
                 String result = xut.applyXSL(config, FileUtils.readFileToString(new File(this.getServletContext().getRealPath(homeXslPath)), defaultEnc));
                 if (result != null) {
-                    response.getOutputStream().write(result.getBytes(defaultEnc));
+                    PrintWriter writer = null;
+                    try {
+                        writer = response.getWriter();
+                    } catch (IOException ex) {
+                    }
+                    writer.write(result);
+                    writer.flush();
+                    writer.close();
                 }
             } catch (Exception e) {
                 System.out.println("Can't validate config!");
@@ -376,10 +390,10 @@ public class PCTServlet extends HttpServlet {
                 fos = new FileOutputStream(new File(this.getServletContext().getRealPath(uploadsPath) + "/" + filename));
                 IOUtils.copy(is, fos);
                 response.setStatus(HttpServletResponse.SC_OK);
-                writer.print("{\"success\":true}");
+                writer.write("{\"success\":true}");
             } catch (Exception e) {
                 response.setStatus(response.SC_INTERNAL_SERVER_ERROR);
-                writer.print("{\"success\":false}");
+                writer.write("{\"success\":false}");
             } finally {
                 try {
                     if (fos != null) {
@@ -408,10 +422,10 @@ public class PCTServlet extends HttpServlet {
                     }
                 }
                 response.setStatus(HttpServletResponse.SC_OK);
-                writer.print("{\"success\":true}");
+                writer.write("{\"success\":true}");
             } catch (Exception e) {
                 response.setStatus(response.SC_INTERNAL_SERVER_ERROR);
-                writer.print("{\"success\":false}");
+                writer.write("{\"success\":false}");
             }
         }
         writer.flush();
@@ -422,7 +436,15 @@ public class PCTServlet extends HttpServlet {
         String page;
         try {
             page = FileUtils.readFileToString(new File(this.getServletContext().getRealPath(path)), defaultEnc);
-            httpServletResponse.getOutputStream().write(page.getBytes(defaultEnc));
+
+            PrintWriter writer = null;
+            try {
+                writer = httpServletResponse.getWriter();
+            } catch (IOException ex) {
+            }
+            writer.write(page);
+            writer.flush();
+            writer.close();
         } catch (Exception e) {
             System.out.println("Can't read page file!");
             httpServletResponse.setStatus(HttpServletResponse.SC_SERVICE_UNAVAILABLE);
@@ -465,7 +487,7 @@ public class PCTServlet extends HttpServlet {
     private String getParameter(HttpServletRequest httpServletRequest, String parameterName) throws UnsupportedEncodingException {
         String enc = httpServletRequest.getCharacterEncoding();
         if (enc == null) {
-            enc = defaultEnc;
+            enc = "ISO-8859-1";
         }
         String val = httpServletRequest.getParameter(parameterName);
         return new String(val.getBytes(enc), defaultEnc);
@@ -479,13 +501,27 @@ public class PCTServlet extends HttpServlet {
                 if ("json".equals(format) || format == null) {
                     String result = xut.applyXSL(config.replace("\\", "\\\\"), FileUtils.readFileToString(new File(this.getServletContext().getRealPath(jsonXslPath)), defaultEnc)).replace("\\\\", "/").replace("\r", "").replace("\n", "\\n");
                     if (result != null) {
-                        httpServletResponse.getOutputStream().write(result.getBytes(defaultEnc));
+                        PrintWriter writer = null;
+                        try {
+                            writer = httpServletResponse.getWriter();
+                        } catch (IOException ex) {
+                        }
+                        writer.write(result);
+                        writer.flush();
+                        writer.close();
                     }
                 } else if ("xml".equals(format)) {
                     DocumentBuilder db = getDbFactory().newDocumentBuilder();
                     db.setEntityResolver(null);
                     db.parse(new ByteArrayInputStream(config.getBytes(defaultEnc)));
-                    httpServletResponse.getOutputStream().write(config.getBytes(defaultEnc));
+                    PrintWriter writer = null;
+                    try {
+                        writer = httpServletResponse.getWriter();
+                    } catch (IOException ex) {
+                    }
+                    writer.write(config);
+                    writer.flush();
+                    writer.close();
                 } else {
                     System.out.println("Unknown format [" + format + "]!");
                     httpServletResponse.setStatus(553);
@@ -528,11 +564,18 @@ public class PCTServlet extends HttpServlet {
                 ds = null;
                 pwd = null;
 
-                httpServletResponse.setCharacterEncoding(defaultEnc);
+                //httpServletResponse.setCharacterEncoding(defaultEnc);
                 httpServletResponse.setContentType("application/pct");
                 httpServletResponse.setHeader("Content-Disposition",
                         "attachment; filename=\"config.exml\"");
-                httpServletResponse.getOutputStream().write(config.getBytes(defaultEnc));
+                PrintWriter writer = null;
+                try {
+                    writer = httpServletResponse.getWriter();
+                } catch (IOException ex) {
+                }
+                writer.write(config);
+                writer.flush();
+                writer.close();
                 return;
             } catch (Exception e) {
                 e.printStackTrace();
