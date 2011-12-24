@@ -5,6 +5,8 @@ import org.apache.commons.fileupload.servlet.ServletFileUpload;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.io.FilenameUtils;
 import org.apache.commons.io.IOUtils;
+import org.apache.log4j.Logger;
+import org.apache.log4j.xml.DOMConfigurator;
 import org.w3c.dom.Document;
 import org.w3c.dom.Node;
 
@@ -16,10 +18,8 @@ import javax.xml.parsers.DocumentBuilder;
 import javax.xml.parsers.DocumentBuilderFactory;
 import java.io.*;
 import java.nio.channels.FileChannel;
-import java.util.Calendar;
-import java.util.Date;
-import java.util.GregorianCalendar;
-import java.util.List;
+import java.text.SimpleDateFormat;
+import java.util.*;
 
 /**
  * Created by IntelliJ IDEA.
@@ -28,27 +28,69 @@ import java.util.List;
  * Time: 5:40 PM
  */
 public class PCTServlet extends HttpServlet {
-    private static final String configPath = "/WEB-INF/config/config.xml";
-    private static final String changelog = "/WEB-INF/changelog.txt";
+    private static final String configPath = "/WEB-INF/config";
+    private static final String logPath = "/log";
     private static final String jsonXslPath = "/WEB-INF/transformToJSON.xsl";
     private static final String homeXslPath = "/WEB-INF/home.xsl";
+    private static final String imageFilesXslPath = "/WEB-INF/images.xsl";
     private static final String prepareCfgXslPath = "/WEB-INF/prepareCfg.xsl";
     private static final String uploadsPath = "/uploads";
+    private static final String log4jCfg = "/WEB-INF/log4j.xml";
+
     private static final String defaultEnc = "UTF8";
     private static DocumentBuilderFactory dbFactory = null;
     private static XMLUtils xut = XMLUtils.getInstance();
     private static final short ADMIN_USER = 1;
     private static final short REGULAR_USER = 2;
     private static final short UNKNOWN_USER = 3;
+    private static final String DATE_FORMAT = "HH:mm dd/MM/yyyy";
+    private static final SimpleDateFormat simpleDateFormat = new SimpleDateFormat(DATE_FORMAT);
+    private static Logger logger;
 
     private static final String ADMIN_PAGE = "/WEB-INF/admin_index.html";
 
-    private static final int LOCK_TIMEOUT = 30; // seconds
+    private static final int LOCK_TIMEOUT = 120; // seconds
     private static Date lockedTime = null;
     private static String lockedBy = null;
+    private static String cfgList = null;
+
+    private static HashMap<String, Short> users = new HashMap<String, Short>();
 
     public PCTServlet() {
         super();
+    }
+
+    private void log(String CN, short userType, HttpServletRequest request, String message) {
+        if (logger == null) {
+            synchronized (logPath) {
+                if (logger == null) {
+                    System.setProperty("rootPath", this.getServletContext().getRealPath(logPath));
+                    DOMConfigurator.configure(this.getServletContext().getRealPath(log4jCfg));
+                    logger = Logger.getLogger("main");
+                }
+            }
+        }
+        String ip;
+        if (request.getHeader("x-real-ip") != null) {
+            ip = request.getHeader("x-real-ip");
+        } else {
+            ip = request.getRemoteAddr();
+        }
+        StringBuilder sb = new StringBuilder();
+        if (userType == ADMIN_USER) {
+            sb.append("[ADM]");
+        } else if (userType == REGULAR_USER) {
+            sb.append("[USR]");
+        } else {
+            sb.append("[!!!]");
+        }
+        sb.append("[");
+        sb.append(CN);
+        sb.append("-");
+        sb.append(ip);
+        sb.append("] ");
+        sb.append(message);
+        logger.info(sb.toString());
     }
 
     @Override
@@ -72,7 +114,7 @@ public class PCTServlet extends HttpServlet {
         }
 
         //////////////////////////////
-        try {
+        /*try {
             CN = getParameter(httpServletRequest, "cn");
         } catch (Exception e) {
         }
@@ -80,7 +122,7 @@ public class PCTServlet extends HttpServlet {
             CN = (String) httpServletRequest.getSession().getAttribute("cn");
         } else {
             httpServletRequest.getSession().setAttribute("cn", CN);
-        }
+        }*/
         //////////////////////////////
 
         short uType = getUserType(CN);
@@ -91,31 +133,151 @@ public class PCTServlet extends HttpServlet {
                 action = getParameter(httpServletRequest, "action");
             } catch (Exception e) {
             }
-
             if (action == null && uType == ADMIN_USER) {
                 getPage(ADMIN_PAGE, httpServletResponse);
+                log(CN, uType, httpServletRequest, "Configurator opened");
             } else if (action == null && uType == REGULAR_USER) {
                 //getPage(REGULAR_PAGE, httpServletResponse);
                 getUserHome(httpServletResponse);
+                log(CN, uType, httpServletRequest, "User page opened");
             } else if ("getConfig".equals(action) && uType == ADMIN_USER) {
                 getConfig(httpServletRequest, httpServletResponse);
             } else if ("getHome".equals(action) && uType == ADMIN_USER) {
                 getAdminHome(false, httpServletResponse);
             } else if ("downloadConfig".equals(action)) {
                 downloadConfig(CN, httpServletRequest, httpServletResponse);
+                log(CN, uType, httpServletRequest, "Configuration downloaded");
             } else if ("saveConfig".equals(action) && uType == ADMIN_USER && (lockedTime == null || CN.equals(lockedBy))) {
                 saveConfig(httpServletRequest, httpServletResponse);
+                log(CN, uType, httpServletRequest, "Configuration saved");
             } else if ("uploadFile".equals(action) && uType == ADMIN_USER && (lockedTime == null || CN.equals(lockedBy))) {
                 uploadFile(httpServletRequest, httpServletResponse);
+                log(CN, uType, httpServletRequest, "File uploaded");
+            } else if ("loadBackup".equals(action) && uType == ADMIN_USER && (lockedTime == null || CN.equals(lockedBy))) {
+                loadBackup(httpServletRequest);
+                log(CN, uType, httpServletRequest, "Restored from backup");
             } else if ("checkStatus".equals(action) && uType == ADMIN_USER) {
                 checkStatus(CN, httpServletResponse);
             } else if ("setStatus".equals(action) && uType == ADMIN_USER) {
-                setStatus(CN, httpServletRequest);
+                boolean locked = false;
+                try {
+                    locked = "true".equals(getParameter(httpServletRequest, "locked"));
+                } catch (Exception e) {
+                }
+                setStatus(CN, httpServletRequest, locked);
+                log(CN, uType, httpServletRequest, locked ? "Configurator locked" : "Configurator unlocked");
+            } else if ("imageFiles".equals(action) && uType == ADMIN_USER) {
+                imageFiles(httpServletResponse);
             } else {
                 httpServletResponse.setStatus(HttpServletResponse.SC_NOT_IMPLEMENTED);
             }
         } else {
             httpServletResponse.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+            log(CN, uType, httpServletRequest, "Unauthorized access");
+        }
+    }
+
+    private void loadBackup(HttpServletRequest request) {
+        try {
+            String fileName = getParameter(request, "file");
+            fileName = fileName.replace("/", "").replace("\\", "").replace("..", "");
+            String config = FileUtils.readFileToString(new File(this.getServletContext().getRealPath(configPath + "/" + fileName)), defaultEnc);
+            synchronized (configPath) {
+                try {
+                    String fullPath = this.getServletContext().getRealPath(configPath + "/config.xml");
+                    System.out.println("Copying old config..");
+                    copyFile(new File(fullPath), new File(fullPath + "_bck_" + System.currentTimeMillis()));
+                    System.out.println("Saving new config..");
+                    FileUtils.writeByteArrayToFile(new File(fullPath), config.getBytes(defaultEnc));
+                    users.clear();
+                    cfgList = null;
+                    removeUnusedFiles(config);
+                } catch (Exception e) {
+                    System.out.println("Can't save config!");
+                    e.printStackTrace();
+                }
+            }
+        } catch (Exception e) {
+            System.out.println("Can't read config!");
+            e.printStackTrace();
+        }
+    }
+
+    private void imageFiles(HttpServletResponse response) {
+        try {
+            if (cfgList == null) {
+                synchronized (configPath) {
+                    String path = this.getServletContext().getRealPath(configPath);
+                    File folder = new File(path);
+                    File[] listOfFiles = folder.listFiles();
+                    StringBuilder result = new StringBuilder();
+                    StringBuilder sb = new StringBuilder();
+                    for (int i = 0; i < listOfFiles.length; i++) {
+                        try {
+                            if (listOfFiles[i].isFile()) {
+                                sb.setLength(0);
+                                sb.append("<File>");
+                                if ("config.xml".equals(listOfFiles[i].getName())) {
+                                    sb.append("<Current/>");
+                                }
+                                sb.append("<Name>");
+                                sb.append(listOfFiles[i].getName());
+                                sb.append("</Name><Description>");
+                                Node descriptionNode = xut.getNode("/root/Comment", xut.getDocumentFromString(FileUtils.readFileToString(listOfFiles[i].getAbsoluteFile())));
+                                if (descriptionNode != null && xut.getString(descriptionNode) != null) {
+                                    sb.append(xut.getString(descriptionNode));
+                                }
+                                sb.append("</Description><Date>");
+                                sb.append(simpleDateFormat.format(new Date(listOfFiles[i].lastModified())));
+                                sb.append("</Date><Sort>");
+                                sb.append(listOfFiles[i].lastModified());
+                                sb.append("</Sort></File>");
+                                result.append(sb);
+                            }
+                        } catch (Exception e) {
+                        }
+                    }
+                    cfgList = result.toString();
+                }
+            }
+            StringBuilder logList = new StringBuilder("<root>");
+            {
+                String path = this.getServletContext().getRealPath(logPath);
+                File folder = new File(path);
+                File[] listOfFiles = folder.listFiles();
+                StringBuilder sb = new StringBuilder();
+                for (int i = 0; i < listOfFiles.length; i++) {
+                    try {
+                        if (listOfFiles[i].isFile()) {
+                            sb.setLength(0);
+                            sb.append("<Log>");
+                            if ("log.txt".equals(listOfFiles[i].getName())) {
+                                sb.append("<Current/>");
+                            }
+                            sb.append("<Name>");
+                            sb.append(logPath + "/" + listOfFiles[i].getName());
+                            sb.append("</Name>");
+                            sb.append("<Date>");
+                            sb.append(simpleDateFormat.format(new Date(listOfFiles[i].lastModified())));
+                            sb.append("</Date><Sort>");
+                            sb.append(listOfFiles[i].lastModified());
+                            sb.append("</Sort></Log>");
+                            logList.append(sb);
+                        }
+                    } catch (Exception e) {
+                    }
+                }
+            }
+            logList.append(cfgList);
+            logList.append("</root>");
+            String html = xut.applyXSL(logList.toString(), FileUtils.readFileToString(new File(this.getServletContext().getRealPath(imageFilesXslPath)), defaultEnc));
+            if (html != null) {
+                response.setContentType("text/html");
+                response.setCharacterEncoding("utf-8"); // for IE only
+                response.getOutputStream().write(html.getBytes(defaultEnc));
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
         }
     }
 
@@ -139,7 +301,7 @@ public class PCTServlet extends HttpServlet {
                             result.append(", \"by\":\"");
                             result.append(lockedBy);
                             result.append("\"");
-                        }else{
+                        } else {
                             lockedTime = new Date();
                         }
                         result.append("}");
@@ -150,17 +312,10 @@ public class PCTServlet extends HttpServlet {
         try {
             response.getOutputStream().write(result.toString().getBytes(defaultEnc));
         } catch (Exception e) {
-
         }
     }
 
-    private void setStatus(String cn, HttpServletRequest request) {
-        boolean locked = false;
-        try {
-            locked = "true".equals(getParameter(request, "locked"));
-        } catch (Exception e) {
-        }
-
+    private void setStatus(String cn, HttpServletRequest request, boolean locked) {
         synchronized (configPath) {
             if (locked) {
                 lockedTime = new Date();
@@ -278,16 +433,20 @@ public class PCTServlet extends HttpServlet {
     private short getUserType(String CN) {
         if (CN != null && !CN.equals("")) {
             try {
+                if (users.containsKey(CN)) {
+                    return users.get(CN);
+                }
                 String config = readConfig();
                 if (config != null) {
                     Node userDeprecatedNode = xut.getNode("/root/Users/User[CN='" + CN + "']/Deprecated", xut.getDocumentFromString(config));
                     if (userDeprecatedNode != null && "false".equals(xut.getString(userDeprecatedNode))) {
                         Node userTypeNode = xut.getNode("/root/Users/User[CN='" + CN + "']/Admin", xut.getDocumentFromString(config));
                         if (userTypeNode != null && "true".equals(xut.getString(userTypeNode))) {
-                            return ADMIN_USER;
+                            users.put(CN, ADMIN_USER);
                         } else {
-                            return REGULAR_USER;
+                            users.put(CN, REGULAR_USER);
                         }
+                        return users.get(CN);
                     }
                 }
             } catch (Exception e) {
@@ -346,7 +505,7 @@ public class PCTServlet extends HttpServlet {
         synchronized (configPath) {
             try {
                 System.out.println("Reading config file..");
-                config = FileUtils.readFileToString(new File(this.getServletContext().getRealPath(configPath)), defaultEnc);
+                config = FileUtils.readFileToString(new File(this.getServletContext().getRealPath(configPath + "/config.xml")), defaultEnc);
             } catch (Exception e) {
                 System.out.println("Can't read config file!");
                 e.printStackTrace();
@@ -394,11 +553,13 @@ public class PCTServlet extends HttpServlet {
             db.parse(new ByteArrayInputStream(config.getBytes(defaultEnc)));
             synchronized (configPath) {
                 try {
-                    String fullPath = this.getServletContext().getRealPath(configPath);
+                    String fullPath = this.getServletContext().getRealPath(configPath + "/config.xml");
                     System.out.println("Copying old config..");
                     copyFile(new File(fullPath), new File(fullPath + "_bck_" + System.currentTimeMillis()));
                     System.out.println("Saving new config..");
                     FileUtils.writeByteArrayToFile(new File(fullPath), config.getBytes(defaultEnc));
+                    users.clear();
+                    cfgList = null;
                     removeUnusedFiles(config);
                 } catch (Exception e) {
                     httpServletResponse.setStatus(551);
@@ -412,7 +573,6 @@ public class PCTServlet extends HttpServlet {
             e.printStackTrace();
         }
     }
-
 
     private void removeUnusedFiles(String config) {
         try {
