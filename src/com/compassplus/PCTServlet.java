@@ -16,6 +16,9 @@ import javax.xml.parsers.DocumentBuilder;
 import javax.xml.parsers.DocumentBuilderFactory;
 import java.io.*;
 import java.nio.channels.FileChannel;
+import java.util.Calendar;
+import java.util.Date;
+import java.util.GregorianCalendar;
 import java.util.List;
 
 /**
@@ -23,7 +26,6 @@ import java.util.List;
  * User: arudin
  * Date: 10/26/11
  * Time: 5:40 PM
- * To change this template use File | Settings | File Templates.
  */
 public class PCTServlet extends HttpServlet {
     private static final String configPath = "/WEB-INF/config/config.xml";
@@ -40,7 +42,10 @@ public class PCTServlet extends HttpServlet {
     private static final short UNKNOWN_USER = 3;
 
     private static final String ADMIN_PAGE = "/WEB-INF/admin_index.html";
-    private static final String REGULAR_PAGE = "/WEB-INF/user_index.html";
+
+    private static final int LOCK_TIMEOUT = 30; // seconds
+    private static Date lockedTime = null;
+    private static String lockedBy = null;
 
     public PCTServlet() {
         super();
@@ -66,14 +71,19 @@ public class PCTServlet extends HttpServlet {
         } catch (Exception e) {
         }
 
-        short uType = getUserType(CN);
-
-        /*if (httpServletRequest.getParameter("z") != null) {
-            uType = REGULAR_USER;
+        //////////////////////////////
+        try {
+            CN = getParameter(httpServletRequest, "cn");
+        } catch (Exception e) {
+        }
+        if (CN == null) {
+            CN = (String) httpServletRequest.getSession().getAttribute("cn");
         } else {
-            uType = ADMIN_USER;
-        }*/
+            httpServletRequest.getSession().setAttribute("cn", CN);
+        }
+        //////////////////////////////
 
+        short uType = getUserType(CN);
         if (uType != UNKNOWN_USER) {
             String action = null;
 
@@ -93,15 +103,72 @@ public class PCTServlet extends HttpServlet {
                 getAdminHome(false, httpServletResponse);
             } else if ("downloadConfig".equals(action)) {
                 downloadConfig(CN, httpServletRequest, httpServletResponse);
-            } else if ("saveConfig".equals(action) && uType == ADMIN_USER) {
+            } else if ("saveConfig".equals(action) && uType == ADMIN_USER && (lockedTime == null || CN.equals(lockedBy))) {
                 saveConfig(httpServletRequest, httpServletResponse);
-            } else if ("uploadFile".equals(action) && uType == ADMIN_USER) {
+            } else if ("uploadFile".equals(action) && uType == ADMIN_USER && (lockedTime == null || CN.equals(lockedBy))) {
                 uploadFile(httpServletRequest, httpServletResponse);
+            } else if ("checkStatus".equals(action) && uType == ADMIN_USER) {
+                checkStatus(CN, httpServletResponse);
+            } else if ("setStatus".equals(action) && uType == ADMIN_USER) {
+                setStatus(CN, httpServletRequest);
             } else {
                 httpServletResponse.setStatus(HttpServletResponse.SC_NOT_IMPLEMENTED);
             }
         } else {
             httpServletResponse.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+        }
+    }
+
+    private void checkStatus(String cn, HttpServletResponse response) {
+        StringBuilder result = new StringBuilder("{\"locked\":false}");
+        if (lockedTime != null) {
+            synchronized (configPath) {
+                if (lockedTime != null) {
+                    Calendar cal = GregorianCalendar.getInstance();
+                    cal.setTime(lockedTime);
+                    cal.add(Calendar.SECOND, LOCK_TIMEOUT);
+
+                    if (cal.before(GregorianCalendar.getInstance())) {
+                        /* expired */
+                        lockedTime = null;
+                        lockedBy = null;
+                    } else {
+                        result.setLength(0);
+                        result.append("{\"locked\":true");
+                        if (!cn.equals(lockedBy)) {
+                            result.append(", \"by\":\"");
+                            result.append(lockedBy);
+                            result.append("\"");
+                        }else{
+                            lockedTime = new Date();
+                        }
+                        result.append("}");
+                    }
+                }
+            }
+        }
+        try {
+            response.getOutputStream().write(result.toString().getBytes(defaultEnc));
+        } catch (Exception e) {
+
+        }
+    }
+
+    private void setStatus(String cn, HttpServletRequest request) {
+        boolean locked = false;
+        try {
+            locked = "true".equals(getParameter(request, "locked"));
+        } catch (Exception e) {
+        }
+
+        synchronized (configPath) {
+            if (locked) {
+                lockedTime = new Date();
+                lockedBy = cn;
+            } else {
+                lockedTime = null;
+                lockedBy = null;
+            }
         }
     }
 
@@ -115,8 +182,7 @@ public class PCTServlet extends HttpServlet {
                 if (wrap) {
                     config = config.replace("<root>", "<root><wrap>true</wrap>");
                 }
-                String result = null;
-                result = xut.applyXSL(config, FileUtils.readFileToString(new File(this.getServletContext().getRealPath(homeXslPath)), defaultEnc));
+                String result = xut.applyXSL(config, FileUtils.readFileToString(new File(this.getServletContext().getRealPath(homeXslPath)), defaultEnc));
                 if (result != null) {
                     response.getOutputStream().write(result.getBytes(defaultEnc));
                 }
@@ -137,7 +203,7 @@ public class PCTServlet extends HttpServlet {
     private void uploadFile(HttpServletRequest request, HttpServletResponse response) {
         boolean modern = false;
         try {
-            modern = getParameter(request, "qqfile") != null ? true : false;
+            modern = getParameter(request, "qqfile") != null;
         } catch (Exception e) {
         }
         PrintWriter writer = null;
@@ -198,7 +264,7 @@ public class PCTServlet extends HttpServlet {
     }
 
     private void getPage(String path, HttpServletResponse httpServletResponse) {
-        String page = null;
+        String page;
         try {
             page = FileUtils.readFileToString(new File(this.getServletContext().getRealPath(path)), defaultEnc);
             httpServletResponse.getOutputStream().write(page.getBytes(defaultEnc));
@@ -252,8 +318,7 @@ public class PCTServlet extends HttpServlet {
             try {
                 String format = getParameter(httpServletRequest, "format");
                 if ("json".equals(format) || format == null) {
-                    String result = null;
-                    result = xut.applyXSL(config.replace("\\", "\\\\"), FileUtils.readFileToString(new File(this.getServletContext().getRealPath(jsonXslPath)), defaultEnc)).replace("\\\\", "/").replace("\r", "").replace("\n", "\\n");
+                    String result = xut.applyXSL(config.replace("\\", "\\\\"), FileUtils.readFileToString(new File(this.getServletContext().getRealPath(jsonXslPath)), defaultEnc)).replace("\\\\", "/").replace("\r", "").replace("\n", "\\n");
                     if (result != null) {
                         httpServletResponse.getOutputStream().write(result.getBytes(defaultEnc));
                     }
@@ -335,7 +400,6 @@ public class PCTServlet extends HttpServlet {
                     System.out.println("Saving new config..");
                     FileUtils.writeByteArrayToFile(new File(fullPath), config.getBytes(defaultEnc));
                     removeUnusedFiles(config);
-                    return;
                 } catch (Exception e) {
                     httpServletResponse.setStatus(551);
                     System.out.println("Can't save config!");
