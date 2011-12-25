@@ -148,7 +148,7 @@ public class PCTServlet extends HttpServlet {
                 downloadConfig(CN, httpServletRequest, httpServletResponse);
                 log(CN, uType, httpServletRequest, "Configuration downloaded");
             } else if ("saveConfig".equals(action) && uType == ADMIN_USER && (lockedTime == null || CN.equals(lockedBy))) {
-                saveConfig(httpServletRequest, httpServletResponse);
+                saveConfig(CN, httpServletRequest, httpServletResponse);
                 log(CN, uType, httpServletRequest, "Configuration saved");
             } else if ("uploadFile".equals(action) && uType == ADMIN_USER && (lockedTime == null || CN.equals(lockedBy))) {
                 uploadFile(httpServletRequest, httpServletResponse);
@@ -222,12 +222,21 @@ public class PCTServlet extends HttpServlet {
                                 }
                                 sb.append("<Name>");
                                 sb.append(listOfFiles[i].getName());
-                                sb.append("</Name><Description>");
-                                Node descriptionNode = xut.getNode("/root/Comment", xut.getDocumentFromString(FileUtils.readFileToString(listOfFiles[i].getAbsoluteFile(), defaultEnc)));
+                                sb.append("</Name>");
+                                sb.append("<Description>");
+                                Document cfg = xut.getDocumentFromString(FileUtils.readFileToString(listOfFiles[i].getAbsoluteFile(), defaultEnc));
+                                Node descriptionNode = xut.getNode("/root/Comment", cfg);
                                 if (descriptionNode != null && xut.getString(descriptionNode) != null) {
                                     sb.append(xut.getString(descriptionNode));
                                 }
-                                sb.append("</Description><Date>");
+                                sb.append("</Description>");
+                                sb.append("<SavedBy>");
+                                Node savedByNode = xut.getNode("/root/SavedBy", cfg);
+                                if (savedByNode != null && xut.getString(savedByNode) != null) {
+                                    sb.append(xut.getString(savedByNode));
+                                }
+                                sb.append("</SavedBy>");
+                                sb.append("<Date>");
                                 sb.append(simpleDateFormat.format(new Date(listOfFiles[i].lastModified())));
                                 sb.append("</Date><Sort>");
                                 sb.append(listOfFiles[i].lastModified());
@@ -584,9 +593,10 @@ public class PCTServlet extends HttpServlet {
         httpServletResponse.setStatus(HttpServletResponse.SC_SERVICE_UNAVAILABLE);
     }
 
-    private void saveConfig(HttpServletRequest httpServletRequest, HttpServletResponse httpServletResponse) {
+    private void saveConfig(String CN, HttpServletRequest httpServletRequest, HttpServletResponse httpServletResponse) {
         try {
             String config = getParameter(httpServletRequest, "config");
+            config = config.replace("<root>", "<root><SavedBy>" + CN + "</SavedBy>");
             System.out.println("Config : ");
             System.out.println(config);
             System.out.println("Getting factory..");
