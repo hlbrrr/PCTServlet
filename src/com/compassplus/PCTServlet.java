@@ -114,7 +114,7 @@ public class PCTServlet extends HttpServlet {
         }
 
         //////////////////////////////
-        /*try {
+        try {
             CN = getParameter(httpServletRequest, "cn");
         } catch (Exception e) {
         }
@@ -122,7 +122,7 @@ public class PCTServlet extends HttpServlet {
             CN = (String) httpServletRequest.getSession().getAttribute("cn");
         } else {
             httpServletRequest.getSession().setAttribute("cn", CN);
-        }*/
+        }
         //////////////////////////////
 
         short uType = getUserType(CN);
@@ -144,8 +144,11 @@ public class PCTServlet extends HttpServlet {
                 getConfig(httpServletRequest, httpServletResponse);
             } else if ("getHome".equals(action) && uType == ADMIN_USER) {
                 getAdminHome(false, httpServletResponse);
-            } else if ("downloadConfig".equals(action)) {
-                downloadConfig(CN, httpServletRequest, httpServletResponse);
+            } else if ("downloadConfig".equals(action) && uType == ADMIN_USER) {
+                downloadConfig(CN, httpServletRequest, httpServletResponse, true);
+                log(CN, uType, httpServletRequest, "Configuration downloaded");
+            } else if ("downloadConfig".equals(action) && uType == REGULAR_USER && getReleaseTimestamp() != null) {
+                downloadConfig(CN, httpServletRequest, httpServletResponse, false);
                 log(CN, uType, httpServletRequest, "Configuration downloaded");
             } else if ("saveConfig".equals(action) && uType == ADMIN_USER && (lockedTime == null || CN.equals(lockedBy))) {
                 saveConfig(CN, httpServletRequest, httpServletResponse);
@@ -156,6 +159,9 @@ public class PCTServlet extends HttpServlet {
             } else if ("loadBackup".equals(action) && uType == ADMIN_USER && (lockedTime == null || CN.equals(lockedBy))) {
                 loadBackup(httpServletRequest);
                 log(CN, uType, httpServletRequest, "Restored from backup");
+            } else if ("releaseConfig".equals(action) && uType == ADMIN_USER && (lockedTime == null || CN.equals(lockedBy))) {
+                releaseConfig(httpServletRequest);
+                log(CN, uType, httpServletRequest, "Released configruration");
             } else if ("checkStatus".equals(action) && uType == ADMIN_USER) {
                 checkStatus(CN, httpServletResponse);
             } else if ("setStatus".equals(action) && uType == ADMIN_USER) {
@@ -184,6 +190,8 @@ public class PCTServlet extends HttpServlet {
             String config = FileUtils.readFileToString(new File(this.getServletContext().getRealPath(configPath + "/" + fileName)), defaultEnc);
             synchronized (configPath) {
                 try {
+                    config = config.replaceAll("<Timestamp>.*</Timestamp>", "");
+                    config = config.replace("<root>", "<root><Timestamp>" + System.currentTimeMillis() + "</Timestamp>");
                     String fullPath = this.getServletContext().getRealPath(configPath + "/config.xml");
                     System.out.println("Copying old config..");
                     copyFile(new File(fullPath), new File(fullPath + "_bck_" + System.currentTimeMillis()));
@@ -194,6 +202,32 @@ public class PCTServlet extends HttpServlet {
                     removeUnusedFiles(config);
                 } catch (Exception e) {
                     System.out.println("Can't save config!");
+                    e.printStackTrace();
+                }
+            }
+        } catch (Exception e) {
+            System.out.println("Can't read config!");
+            e.printStackTrace();
+        }
+    }
+
+    private void releaseConfig(HttpServletRequest request) {
+        try {
+            String timestamp = getParameter(request, "timestamp");
+            String config = readConfig();
+            synchronized (configPath) {
+                try {
+                    config = config.replaceAll("<ReleaseTimestamp>.*</ReleaseTimestamp>", "");
+                    config = config.replace("<root>", "<root><ReleaseTimestamp>" + timestamp + "</ReleaseTimestamp>");
+
+                    String fullPath = this.getServletContext().getRealPath(configPath + "/config.xml");
+                    System.out.println("Releasing config..");
+                    FileUtils.writeByteArrayToFile(new File(fullPath), config.getBytes(defaultEnc));
+                    //users.clear();
+                    cfgList = null;
+                    //removeUnusedFiles(config);
+                } catch (Exception e) {
+                    System.out.println("Can't release config!");
                     e.printStackTrace();
                 }
             }
@@ -225,21 +259,36 @@ public class PCTServlet extends HttpServlet {
                                 sb.append("</Name>");
                                 sb.append("<Description>");
                                 Document cfg = xut.getDocumentFromString(FileUtils.readFileToString(listOfFiles[i].getAbsoluteFile(), defaultEnc));
+                                Node timestamp = xut.getNode("/root/Timestamp", cfg);
+
                                 Node descriptionNode = xut.getNode("/root/Comment", cfg);
                                 if (descriptionNode != null && xut.getString(descriptionNode) != null) {
                                     sb.append(xut.getString(descriptionNode));
                                 }
                                 sb.append("</Description>");
+                                if (getReleaseTimestamp() != null && getReleaseTimestamp().equals(xut.getString(timestamp))) {
+                                    sb.append("<Release/>");
+                                }
                                 sb.append("<SavedBy>");
                                 Node savedByNode = xut.getNode("/root/SavedBy", cfg);
                                 if (savedByNode != null && xut.getString(savedByNode) != null) {
                                     sb.append(xut.getString(savedByNode));
                                 }
                                 sb.append("</SavedBy>");
+                                sb.append("<Timestamp>");
+                                if (timestamp != null && xut.getString(timestamp) != null) {
+                                    sb.append(xut.getString(timestamp));
+                                }
+                                sb.append("</Timestamp>");
                                 sb.append("<Date>");
                                 sb.append(simpleDateFormat.format(new Date(listOfFiles[i].lastModified())));
                                 sb.append("</Date><Sort>");
-                                sb.append(listOfFiles[i].lastModified());
+                                if (timestamp != null && xut.getString(timestamp) != null) {
+                                    sb.append(xut.getString(timestamp));
+                                } else {
+                                    sb.append("0");
+                                }
+                                //sb.append(listOfFiles[i].lastModified());
                                 sb.append("</Sort></File>");
                                 result.append(sb);
                             }
@@ -499,7 +548,7 @@ public class PCTServlet extends HttpServlet {
             enc = "ISO-8859-1";
         }
         String val = httpServletRequest.getParameter(parameterName);
-        return new String(val.getBytes(enc), defaultEnc);
+        return val != null ? new String(val.getBytes(enc), defaultEnc) : null;
     }
 
     private void getConfig(HttpServletRequest httpServletRequest, HttpServletResponse httpServletResponse) {
@@ -546,11 +595,30 @@ public class PCTServlet extends HttpServlet {
     }
 
     private String readConfig() {
+        return readConfig(null);
+    }
+
+    private String readConfig(String timestamp) {
         String config = null;
         synchronized (configPath) {
             try {
-                System.out.println("Reading config file..");
-                config = FileUtils.readFileToString(new File(this.getServletContext().getRealPath(configPath + "/config.xml")), defaultEnc);
+                System.out.println("Reading config file " + (timestamp != null ? "[ts=" + timestamp + "]" : "") + "..");
+                if (timestamp != null) {
+                    String path = this.getServletContext().getRealPath(configPath);
+                    File folder = new File(path);
+                    File[] listOfFiles = folder.listFiles();
+                    String releaseTimestamp = getReleaseTimestamp();
+                    for (int i = 0; i < listOfFiles.length; i++) {
+                        if (listOfFiles[i].isFile()) {
+                            Document cfg = xut.getDocumentFromString(FileUtils.readFileToString(listOfFiles[i].getAbsoluteFile(), defaultEnc));
+                            if (releaseTimestamp != null && releaseTimestamp.equals(xut.getString(xut.getNode("/root/Timestamp", cfg)))) {
+                                config = FileUtils.readFileToString(listOfFiles[i].getAbsoluteFile(), defaultEnc);
+                            }
+                        }
+                    }
+                } else {
+                    config = FileUtils.readFileToString(new File(this.getServletContext().getRealPath(configPath + "/config.xml")), defaultEnc);
+                }
             } catch (Exception e) {
                 System.out.println("Can't read config file!");
                 e.printStackTrace();
@@ -559,8 +627,27 @@ public class PCTServlet extends HttpServlet {
         return config;
     }
 
-    private void downloadConfig(String cn, HttpServletRequest httpServletRequest, HttpServletResponse httpServletResponse) {
+    private String getReleaseTimestamp() {
         String config = readConfig();
+        if (config != null) {
+            Node releaseTimestamp = xut.getNode("/root/ReleaseTimestamp", xut.getDocumentFromString(config));
+            return xut.getString(releaseTimestamp);
+        }
+        return null;
+    }
+
+    private void downloadConfig(String cn, HttpServletRequest httpServletRequest, HttpServletResponse httpServletResponse, boolean anyCfgAllowed) {
+        String config = null;
+        if (anyCfgAllowed) {
+            String timestamp = null;
+            try {
+                timestamp = getParameter(httpServletRequest, "timestamp");
+            } catch (Exception e) {
+            }
+            config = readConfig(timestamp);
+        } else {
+            config = readConfig(getReleaseTimestamp());
+        }
         if (config != null) {
             try {
                 String pwd = getParameter(httpServletRequest, "pwd");
@@ -597,6 +684,7 @@ public class PCTServlet extends HttpServlet {
         try {
             String config = getParameter(httpServletRequest, "config");
             config = config.replace("<root>", "<root><SavedBy>" + CN + "</SavedBy>");
+            config = config.replace("<root>", "<root><Timestamp>" + System.currentTimeMillis() + "</Timestamp>");
             System.out.println("Config : ");
             System.out.println(config);
             System.out.println("Getting factory..");
