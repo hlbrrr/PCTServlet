@@ -114,7 +114,7 @@ public class PCTServlet extends HttpServlet {
         }
 
         //////////////////////////////
-        try {
+       /* try {
             CN = getParameter(httpServletRequest, "cn");
         } catch (Exception e) {
         }
@@ -122,7 +122,7 @@ public class PCTServlet extends HttpServlet {
             CN = (String) httpServletRequest.getSession().getAttribute("cn");
         } else {
             httpServletRequest.getSession().setAttribute("cn", CN);
-        }
+        }*/
         //////////////////////////////
 
         short uType = getUserType(CN);
