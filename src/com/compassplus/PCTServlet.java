@@ -114,7 +114,7 @@ public class PCTServlet extends HttpServlet {
         }
 
         //////////////////////////////
-       /* try {
+        /* try {
             CN = getParameter(httpServletRequest, "cn");
         } catch (Exception e) {
         }
@@ -275,13 +275,23 @@ public class PCTServlet extends HttpServlet {
                                     sb.append(xut.getString(savedByNode));
                                 }
                                 sb.append("</SavedBy>");
-                                sb.append("<Timestamp>");
                                 if (timestamp != null && xut.getString(timestamp) != null) {
+                                    sb.append("<Timestamp>");
                                     sb.append(xut.getString(timestamp));
+                                    sb.append("</Timestamp>");
                                 }
-                                sb.append("</Timestamp>");
                                 sb.append("<Date>");
-                                sb.append(simpleDateFormat.format(new Date(listOfFiles[i].lastModified())));
+                                if (timestamp != null && xut.getString(timestamp) != null) {
+                                    Integer timestampInt = 0;
+                                    try {
+                                        timestampInt = Integer.parseInt(xut.getString(timestamp));
+                                    } catch (Exception e) {
+
+                                    }
+                                    sb.append(simpleDateFormat.format(new Date(timestampInt)));
+                                } else {
+                                    sb.append(simpleDateFormat.format(new Date(listOfFiles[i].lastModified())));
+                                }
                                 sb.append("</Date><Sort>");
                                 if (timestamp != null && xut.getString(timestamp) != null) {
                                     sb.append(xut.getString(timestamp));
