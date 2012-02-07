@@ -161,7 +161,7 @@ public class PCTServlet extends HttpServlet {
                 log(CN, uType, httpServletRequest, "Restored from backup");
             } else if ("releaseConfig".equals(action) && uType == ADMIN_USER && (lockedTime == null || CN.equals(lockedBy))) {
                 releaseConfig(httpServletRequest);
-                log(CN, uType, httpServletRequest, "Configruration released");
+                log(CN, uType, httpServletRequest, "Configuration released");
             } else if ("checkStatus".equals(action) && uType == ADMIN_USER) {
                 checkStatus(CN, httpServletResponse);
             } else if ("setStatus".equals(action) && uType == ADMIN_USER) {
