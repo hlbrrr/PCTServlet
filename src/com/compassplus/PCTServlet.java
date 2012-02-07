@@ -161,7 +161,7 @@ public class PCTServlet extends HttpServlet {
                 log(CN, uType, httpServletRequest, "Restored from backup");
             } else if ("releaseConfig".equals(action) && uType == ADMIN_USER && (lockedTime == null || CN.equals(lockedBy))) {
                 releaseConfig(httpServletRequest);
-                log(CN, uType, httpServletRequest, "Released configruration");
+                log(CN, uType, httpServletRequest, "Configruration released");
             } else if ("checkStatus".equals(action) && uType == ADMIN_USER) {
                 checkStatus(CN, httpServletResponse);
             } else if ("setStatus".equals(action) && uType == ADMIN_USER) {
@@ -282,9 +282,9 @@ public class PCTServlet extends HttpServlet {
                                 }
                                 sb.append("<Date>");
                                 if (timestamp != null && xut.getString(timestamp) != null) {
-                                    Integer timestampInt = 0;
+                                    Long timestampInt = new Long(0);
                                     try {
-                                        timestampInt = Integer.parseInt(xut.getString(timestamp));
+                                        timestampInt = Long.parseLong(xut.getString(timestamp));
                                     } catch (Exception e) {
 
                                     }
@@ -296,7 +296,7 @@ public class PCTServlet extends HttpServlet {
                                 if (timestamp != null && xut.getString(timestamp) != null) {
                                     sb.append(xut.getString(timestamp));
                                 } else {
-                                    sb.append("0");
+                                    sb.append(listOfFiles[i].lastModified());
                                 }
                                 //sb.append(listOfFiles[i].lastModified());
                                 sb.append("</Sort></File>");
