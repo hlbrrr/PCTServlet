@@ -617,12 +617,12 @@ public class PCTServlet extends HttpServlet {
                     String path = this.getServletContext().getRealPath(configPath);
                     File folder = new File(path);
                     File[] listOfFiles = folder.listFiles();
-                    String releaseTimestamp = getReleaseTimestamp();
                     for (int i = 0; i < listOfFiles.length; i++) {
                         if (listOfFiles[i].isFile()) {
                             Document cfg = xut.getDocumentFromString(FileUtils.readFileToString(listOfFiles[i].getAbsoluteFile(), defaultEnc));
-                            if (releaseTimestamp != null && releaseTimestamp.equals(xut.getString(xut.getNode("/root/Timestamp", cfg)))) {
+                            if (timestamp.equals(xut.getString(xut.getNode("/root/Timestamp", cfg)))) {
                                 config = FileUtils.readFileToString(listOfFiles[i].getAbsoluteFile(), defaultEnc);
+                                break;
                             }
                         }
                     }
